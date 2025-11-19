@@ -54,6 +54,8 @@ Verifica servicio y plugin de gestión:
 - Estado del servidor: `./rabbitmqctl.bat status`
 - Consola web: `http://localhost:15672` (usuario y password que creaste)
 
+
+IMPORTANTE 
 🐍 Preparar entorno de Python (venv)
 1) Crear y activar entorno virtual:
 ```
