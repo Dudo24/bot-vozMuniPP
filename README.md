@@ -1,123 +1,139 @@
-🗣️ Bot de Voz con Python + Coqui TTS
+🗣️ Bot de Voz con Python + Coqui TTS + RabbitMQ (Windows)
 
-Este proyecto implementa un bot de voz utilizando Python, Coqui TTS para síntesis de voz y un entorno virtual para mantener dependencias aisladas.
+Este documento explica la instalación completa: Python, Erlang/OTP, RabbitMQ, dependencias del bot, ejecución y verificación.
 
-✅ Requisitos previos (Windows)
+✅ Requisitos previos
+- Windows 10/11 de 64 bits
+- Python 3.10.x instalado y en PATH
+- Permisos de PowerShell para scripts: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
 
-Antes de comenzar asegúrate de tener instalado:
-
-1. Python 3.10.x
-
-Verifica tu versión:
-
+Verifica Python:
+```
 python --version
+```
 
+🔧 Instalar Erlang/OTP (requerido por RabbitMQ)
+- Descarga e instala Erlang/OTP para Windows (64 bits) desde el sitio oficial.
+    https://www.erlang.org/downloads
+- Asegúrate de instalar una versión compatible con tu RabbitMQ.
+- Durante la instalación, permite que se agregue Erlang al PATH.
 
-Debe mostrar algo como:
+Validar instalación de Erlang:
+```
+erl -version
+```
 
-Python 3.10.x
+📦 Instalar RabbitMQ (Windows)
+https://www.rabbitmq.com/docs/install-windows
+1) Instala RabbitMQ para Windows (instalador MSI).
+2) Abre PowerShell como administrador y ve al directorio `sbin` de RabbitMQ, por ejemplo:
+```
+cd "C:\Program Files\RabbitMQ Server\rabbitmq_server-<VERSION>\sbin"
+```
+3) Instala RabbitMQ como servicio de Windows y arráncalo:
+```
+./rabbitmq-service.bat install
+./rabbitmq-service.bat start
+```
+4) Habilita la consola web de administración:
+```
+./rabbitmq-plugins.bat enable rabbitmq_management
+```
+5) Crea un usuario propio seguro y restringe el usuario por defecto:
+```
+./rabbitmqctl.bat add_user muni_bot <TU_PASSWORD_FUERTE>
+./rabbitmqctl.bat set_permissions -p / muni_bot ".*" ".*" ".*"
+./rabbitmqctl.bat set_user_tags muni_bot administrator
+```
+Opcionalmente deshabilita acceso remoto del usuario `guest` (solo sirve en localhost):
+```
+./rabbitmqctl.bat clear_password guest
+```
 
+Verifica servicio y plugin de gestión:
+- Estado del servidor: `./rabbitmqctl.bat status`
+- Consola web: `http://localhost:15672` (usuario y password que creaste)
 
-Si no tienes Python 3.10, descárgalo de:
-https://www.python.org/downloads/release/python-3100/
+🐍 Preparar entorno de Python (venv)
+1) Crear y activar entorno virtual:
+```
+python -m venv venv
+./venv/Scripts/Activate.ps1
+```
+2) Instalar dependencias del bot:
+```
+pip install TTS pygame num2words pika scipy
+```
+Nota: `TTS` descargará modelos y dependencias. `scipy` se usa para escribir WAV.
 
-Durante la instalación activa:
+🔧 Configurar variables de entorno para el bot
+En PowerShell (mientras el worker está corriendo, hereda estas variables):
+```
+$env:RABBITMQ_HOST = "localhost"
+$env:RABBITMQ_PORT = "5672"
+$env:RABBITMQ_USER = "muni_bot"
+$env:RABBITMQ_PASS = "<TU_PASSWORD_FUERTE>"
+```
+Si necesitas que sean persistentes, configúralas en Variables de Entorno del Sistema.
 
-✔ Add Python to PATH
-✔ Install Python Launcher (py.exe)
+📁 Estructura del proyecto
+```
+bot-vozMuniPP/
+├── venv/
+└── app/
+    ├── producer.py      (publica mensajes en la cola 'voz')
+    ├── worker.py        (consume 'voz' y reproduce audio)
+    ├── tts_engine.py    (motor TTS y reproducción)
+    └── utils.py         (normalización y lectura de identidad)
+```
 
-🚀 Instalación del Proyecto
-1. Clonar o crear la carpeta del proyecto
-cd C:\Users\TU_USUARIO\Desktop
-mkdir bot_voz
-cd bot_voz
+▶️ Ejecutar el bot de voz
+1) Inicia RabbitMQ (servicio ya instalado):
+```
+cd "C:\Program Files\RabbitMQ Server\rabbitmq_server-<VERSION>\sbin"
+./rabbitmq-service.bat start
+```
+2) Activa el entorno Python y arranca el worker:
+```
+cd C:\Users\TU_USUARIO\Desktop\bot-vozMuniPP
+./venv/Scripts/Activate.ps1
+python app/worker.py
+```
+Verás: "Bot de voz escuchando mensajes..."
 
-2. Crear un entorno virtual (Windows)
+3) En otra consola, envía un llamado con el producer (CLI):
+Por nombre:
+```
+python app/producer.py --ventanilla 7 --nombre "Jose Rodrigo Orozco Gomez"
+```
+Por identidad (DNI/pasaporte/carnet):
+```
+python app/producer.py --ventanilla 3 --identidad 12345678 --tipo-identidad dni --preferir-identidad
+```
 
-Primero verifica la ruta exacta de Python:
+🔎 Verificación en RabbitMQ
+- Abre `http://localhost:15672` y verifica la cola `voz`.
+- El worker confirma mensajes y evita reentregas incluso si se interrumpe.
 
-where python
+🛟 Operación como servicio del worker (opcional)
+- Puedes usar el Programador de Tareas de Windows para iniciar `python app/worker.py` al arranque.
+- Alternativas como NSSM pueden correr el script Python como servicio.
 
+⚠️ Problemas comunes y soluciones
+- No conecta a RabbitMQ: verifica servicio (`rabbitmqctl status`), firewall y credenciales.
+- Advertencia `pkg_resources` de Pygame: es inocua, se puede ignorar.
+- `PermissionError` al guardar WAV: resuelto usando archivos temporales; no se reutiliza `voz.wav`.
+- Dígitos no admitidos por TTS: se convierten a palabras en español automáticamente.
+- Al presionar Ctrl+C: el worker cierra limpio y confirma el mensaje.
 
-Ejemplo de salida:
+🔗 Integración desde PHP 7.4 (referencia)
+- Usa una librería AMQP como `php-amqplib/php-amqplib`.
+- Publica en la cola `voz` con un JSON que contenga: `nombre`, `ventanilla`, `identidad`, `tipo_identidad`, `preferir_identidad`.
+- El bot de Python es un proceso independiente; no se ejecuta dentro de PHP.
 
-C:\Users\TU_USUARIO\AppData\Local\Programs\Python\Python310\python.exe
+📌 Comandos rápidos
+- Arrancar worker: `python app/worker.py`
+- Enviar por nombre: `python app/producer.py --ventanilla 7 --nombre "Nombre Apellido"`
+- Enviar por DNI: `python app/producer.py --ventanilla 2 --identidad 12345678 --tipo-identidad dni --preferir-identidad`
 
-
-Usa esa ruta para crear el entorno:
-
-"C:\Users\TU_USUARIO\AppData\Local\Programs\Python\Python310\python.exe" -m venv venv
-
-3. Activar el entorno virtual
-.\venv\Scripts\Activate.ps1
-
-
-Si aparece error de permisos(IMPORTANTE):
-
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-
-
-Luego activa de nuevo el entorno:
-
-.\venv\Scripts\Activate.ps1
-
-4. Instalar dependencias del proyecto
-pip install coqui-tts
-pip install sounddevice
-pip install numpy
-pip install pynput
-
-
-Si tienes un archivo requirements.txt, también puedes usar:
-
-pip install -r requirements.txt
-
-▶️ Ejecución
-
-Una vez con el entorno activado:
-
-python main.py
-
-📁 Estructura recomendada del proyecto
-bot_voz/
-│
-├── venv/                 (entorno virtual)
-│
-├── app/
-│   ├── producer.py       (envía mensajes a la cola)
-│   ├── worker.py         (bot que los lee)
-│   ├── tts_engine.py     (motor de voz separado)
-│   └── utils.py          (funciones de soporte)
-│
-└── requirements.txt
-
-🧪 Probar instalación de Coqui TTS
-
-Ejemplo básico:
-
-from TTS.api import TTS
-
-tts = TTS("tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
-tts.tts_to_file(text="Hola, esto es una prueba de Coqui TTS.", file_path="salida.wav")
-
-
-Ejecuta:
-
-python main.py
-
-❗ Problemas Comunes
-🔹 "python3.10 no se reconoce"
-
-Usa la ruta exacta obtenida con:
-
-where python
-
-🔹 No se activa el entorno virtual
-
-Ejecuta:
-
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-
-🔹 Coqui TTS tarda en instalar
-
-Es normal: descarga modelos, compila libs y pesa varios MB.
+Con esto, tienes todo lo necesario para instalar RabbitMQ/Erlang, preparar el entorno Python y ejecutar el bot de voz de punta a punta en Windows.

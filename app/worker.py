@@ -1,30 +1,53 @@
 import pika, json, time, os
-from utils import limpiar_texto
+from utils import limpiar_texto, identidad_a_palabras
 from tts_engine import generar_audio, reproducir_audio
 
 
-def llamar_persona(nombre, ventanilla):
-    frase = f"{nombre}, por favor acercarse a la ventanilla número {ventanilla}."
+def llamar_persona(nombre, ventanilla, identidad=None, tipo_identidad=None, preferir_identidad=False):
+    if (preferir_identidad and identidad) or (not nombre and identidad):
+        tipo = (tipo_identidad or "identidad").lower()
+        if tipo == "dni":
+            etiqueta = "DNI"
+        elif tipo == "pasaporte":
+            etiqueta = "Pasaporte"
+        elif tipo == "carnet":
+            etiqueta = "Carnet de extranjería"
+        else:
+            etiqueta = "identidad"
+        id_hablada = identidad_a_palabras(identidad)
+        frase = f"Cliente con {etiqueta} {id_hablada}, por favor acercarse a la ventanilla número {ventanilla}."
+    else:
+        frase = f"{nombre}, por favor acercarse a la ventanilla número {ventanilla}."
     frase = limpiar_texto(frase)
 
-    for intento in range(1, 4):
+    for intento in range(1, 3):
         print(f"[INTENTO {intento}] {frase}")
 
         archivo = generar_audio(frase)
         reproducir_audio(archivo)
 
-        if intento < 3:
+        if intento < 2:
             time.sleep(3)
 
 
 def callback(ch, method, properties, body):
-    data = json.loads(body.decode())
-    nombre = data["nombre"]
-    ventanilla = data["ventanilla"]
-
-    llamar_persona(nombre, ventanilla)
-
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+    try:
+        data = json.loads(body.decode())
+        nombre = data.get("nombre")
+        ventanilla = data["ventanilla"]
+        identidad = data.get("identidad")
+        tipo_identidad = data.get("tipo_identidad")
+        preferir_identidad = data.get("preferir_identidad", False)
+        llamar_persona(nombre, ventanilla, identidad, tipo_identidad, preferir_identidad)
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        print(f"Error procesando mensaje: {e}")
+    finally:
+        try:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except Exception:
+            pass
 
 
 def iniciar_bot():
@@ -54,7 +77,18 @@ def iniciar_bot():
         auto_ack=False
     )
 
-    channel.start_consuming()
+    try:
+        channel.start_consuming()
+    except KeyboardInterrupt:
+        print("Interrumpido por el usuario. Cerrando conexión...")
+        try:
+            channel.stop_consuming()
+        except Exception:
+            pass
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

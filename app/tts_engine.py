@@ -1,24 +1,30 @@
 from TTS.api import TTS
 import pygame
 import time
+import tempfile
+import os
 
-# Inicializar pygame para reproducir audio
 pygame.mixer.init()
 
-# Cargar modelo Coqui TTS español
 tts = TTS("tts_models/es/css10/vits")
 
 
-def generar_audio(texto, archivo="voz.wav"):
-    """Genera un archivo de audio desde texto."""
-    tts.tts_to_file(text=texto, file_path=archivo)
-    return archivo
+def generar_audio(texto):
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    path = tmp.name
+    tmp.close()
+    tts.tts_to_file(text=texto, file_path=path)
+    return path
 
 
-def reproducir_audio(archivo="voz.wav"):
-    """Reproduce un archivo de audio WAV."""
-    pygame.mixer.music.load(archivo)
-    pygame.mixer.music.play()
-
-    while pygame.mixer.music.get_busy():
-        time.sleep(0.1)
+def reproducir_audio(archivo):
+    sound = pygame.mixer.Sound(archivo)
+    channel = sound.play()
+    try:
+        while channel.get_busy():
+            time.sleep(0.1)
+    finally:
+        try:
+            os.remove(archivo)
+        except OSError:
+            pass
