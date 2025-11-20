@@ -1,7 +1,7 @@
 import pika, json, argparse, os
 
 
-def enviar_llamado(nombre=None, ventanilla=None, identidad=None, tipo_identidad=None, preferir_identidad=False):
+def enviar_llamado(nombre=None, ventanilla=None, identidad=None, tipo_identidad=None, preferir_identidad=False, una_vez=False, intentos=None):
     host = os.getenv("RABBITMQ_HOST", "localhost")
     port = int(os.getenv("RABBITMQ_PORT", "5672"))
     user = os.getenv("RABBITMQ_USER", "guest")
@@ -19,7 +19,10 @@ def enviar_llamado(nombre=None, ventanilla=None, identidad=None, tipo_identidad=
         "identidad": identidad,
         "tipo_identidad": tipo_identidad,
         "preferir_identidad": preferir_identidad,
+        "una_vez": una_vez,
     }
+    if intentos is not None:
+        payload["intentos"] = intentos
 
     channel.basic_publish(
         exchange="",
@@ -38,6 +41,8 @@ if __name__ == "__main__":
     parser.add_argument("--identidad", type=str, help="Número de identidad (DNI, pasaporte, carnet)")
     parser.add_argument("--tipo-identidad", type=str, choices=["dni", "pasaporte", "carnet"], help="Tipo de identidad")
     parser.add_argument("--preferir-identidad", action="store_true", help="Usar identidad en lugar del nombre si ambos existen")
+    parser.add_argument("--una-vez", action="store_true", help="Realizar un solo llamado")
+    parser.add_argument("--intentos", type=int, help="Cantidad de intentos de llamado")
 
     args = parser.parse_args()
 
@@ -47,4 +52,6 @@ if __name__ == "__main__":
         identidad=args.identidad,
         tipo_identidad=args.tipo_identidad,
         preferir_identidad=args.preferir_identidad,
+        una_vez=args.una_vez,
+        intentos=args.intentos,
     )

@@ -3,7 +3,7 @@ from utils import limpiar_texto, identidad_a_palabras
 from tts_engine import generar_audio, reproducir_audio
 
 
-def llamar_persona(nombre, ventanilla, identidad=None, tipo_identidad=None, preferir_identidad=False):
+def construir_frase(nombre, ventanilla, identidad=None, tipo_identidad=None, preferir_identidad=False):
     if (preferir_identidad and identidad) or (not nombre and identidad):
         tipo = (tipo_identidad or "identidad").lower()
         if tipo == "dni":
@@ -18,16 +18,28 @@ def llamar_persona(nombre, ventanilla, identidad=None, tipo_identidad=None, pref
         frase = f"Cliente con {etiqueta} {id_hablada}, por favor acercarse a la ventanilla número {ventanilla}."
     else:
         frase = f"{nombre}, por favor acercarse a la ventanilla número {ventanilla}."
-    frase = limpiar_texto(frase)
+    return limpiar_texto(frase)
 
-    for intento in range(1, 3):
+
+def llamar(frase, intentos=2, pausa_seg=2):
+    for intento in range(1, intentos + 1):
         print(f"[INTENTO {intento}] {frase}")
-
         archivo = generar_audio(frase)
         reproducir_audio(archivo)
+        if intento < intentos:
+            time.sleep(pausa_seg)
 
-        if intento < 2:
-            time.sleep(3)
+
+def llamar_persona(nombre, ventanilla, identidad=None, tipo_identidad=None, preferir_identidad=False, intentos=2):
+    frase = construir_frase(nombre, ventanilla, identidad, tipo_identidad, preferir_identidad)
+    llamar(frase, intentos=intentos)
+
+
+def llamar_persona_una_vez(nombre, ventanilla, identidad=None, tipo_identidad=None, preferir_identidad=False):
+    frase = construir_frase(nombre, ventanilla, identidad, tipo_identidad, preferir_identidad)
+    llamar(frase, intentos=1)
+
+
 
 
 def callback(ch, method, properties, body):
@@ -38,7 +50,13 @@ def callback(ch, method, properties, body):
         identidad = data.get("identidad")
         tipo_identidad = data.get("tipo_identidad")
         preferir_identidad = data.get("preferir_identidad", False)
-        llamar_persona(nombre, ventanilla, identidad, tipo_identidad, preferir_identidad)
+        una_vez = data.get("una_vez", False)
+        intentos = int(data.get("intentos", 2))
+        if una_vez:
+            intentos = 1
+        if intentos < 1:
+            intentos = 1
+        llamar_persona(nombre, ventanilla, identidad, tipo_identidad, preferir_identidad, intentos=intentos)
     except KeyboardInterrupt:
         raise
     except Exception as e:

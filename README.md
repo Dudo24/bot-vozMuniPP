@@ -113,6 +113,19 @@ Por identidad (DNI/pasaporte/carnet):
 python app/producer.py --ventanilla 3 --identidad 12345678 --tipo-identidad dni --preferir-identidad
 ```
 
+Opciones de repetición (nuevas):
+- Un solo llamado:
+```
+python app/producer.py --ventanilla 7 --nombre "Eduardo Saldaña" --una-vez
+```
+- Llamado con intentos personalizados (por defecto 2):
+```
+python app/producer.py --ventanilla 7 --nombre "Eduardo Saldaña" --intentos 2
+```
+Notas:
+- Si se envía `--una-vez`, el worker fuerza 1 intento.
+- Si se envía `--intentos N`, el worker usa N intentos (mínimo 1).
+
 🔎 Verificación en RabbitMQ
 - Abre `http://localhost:15672` y verifica la cola `voz`.
 - El worker confirma mensajes y evita reentregas incluso si se interrumpe.
@@ -127,15 +140,61 @@ python app/producer.py --ventanilla 3 --identidad 12345678 --tipo-identidad dni 
 - `PermissionError` al guardar WAV: resuelto usando archivos temporales; no se reutiliza `voz.wav`.
 - Dígitos no admitidos por TTS: se convierten a palabras en español automáticamente.
 - Al presionar Ctrl+C: el worker cierra limpio y confirma el mensaje.
+- Audio bloqueado o errores de permisos: el bot usa archivos WAV temporales y los elimina al finalizar la reproducción.
 
 🔗 Integración desde PHP 7.4 (referencia)
 - Usa una librería AMQP como `php-amqplib/php-amqplib`.
-- Publica en la cola `voz` con un JSON que contenga: `nombre`, `ventanilla`, `identidad`, `tipo_identidad`, `preferir_identidad`.
+- Publica en la cola `voz` con un JSON que contenga: `nombre`, `ventanilla`, `identidad`, `tipo_identidad`, `preferir_identidad`, y opcionalmente `una_vez` o `intentos`.
 - El bot de Python es un proceso independiente; no se ejecuta dentro de PHP.
+
+Ejemplo PHP (publicar en la cola `voz`):
+```
+<?php
+require __DIR__ . '/vendor/autoload.php';
+
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
+
+$host = getenv('RABBITMQ_HOST') ?: 'localhost';
+$port = getenv('RABBITMQ_PORT') ? intval(getenv('RABBITMQ_PORT')) : 5672;
+$user = getenv('RABBITMQ_USER') ?: 'muni_bot';
+$pass = getenv('RABBITMQ_PASS') ?: 'TU_PASSWORD_FUERTE';
+
+$conn = new AMQPStreamConnection($host, $port, $user, $pass);
+$ch = $conn->channel();
+$ch->queue_declare('voz', false, true, false, false);
+
+// Ejemplo: llamar una vez por nombre
+$payload = [
+  'ventanilla' => 7,
+  'nombre' => 'Eduardo Saldaña',
+  'una_vez' => true,
+];
+
+$msg = new AMQPMessage(json_encode($payload), ['content_type' => 'application/json']);
+$ch->basic_publish($msg, '', 'voz');
+
+echo "Mensaje enviado: ", json_encode($payload), "\n";
+$ch->close();
+$conn->close();
+```
+
+Ejemplo con identidad y 2 intentos:
+```
+$payload = [
+  'ventanilla' => 3,
+  'identidad' => '12345678',
+  'tipo_identidad' => 'dni',
+  'preferir_identidad' => true,
+  'intentos' => 2,
+];
+```
 
 📌 Comandos rápidos
 - Arrancar worker: `python app/worker.py`
 - Enviar por nombre: `python app/producer.py --ventanilla 7 --nombre "Nombre Apellido"`
 - Enviar por DNI: `python app/producer.py --ventanilla 2 --identidad 12345678 --tipo-identidad dni --preferir-identidad`
+- Llamar una vez: `python app/producer.py --ventanilla 7 --nombre "Nombre Apellido" --una-vez`
+- Llamar con intentos N: `python app/producer.py --ventanilla 7 --nombre "Nombre Apellido" --intentos N`
 
 Con esto, tienes todo lo necesario para instalar RabbitMQ/Erlang, preparar el entorno Python y ejecutar el bot de voz de punta a punta en Windows.
